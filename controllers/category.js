@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Category = require('../models/Category');
+const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 const { isValidObjectId } = require('mongoose');
@@ -36,7 +37,7 @@ exports.addCategory = asyncHandler(async (req, res, next) => {
 // @route   GET /api/v1/categories
 // @access  Public
 exports.getCategories = asyncHandler(async (req, res, next) => {
-  const categories = await Category.find({});
+  const categories = await Category.find({}).sort('-createdAt');
 
   return res.json({
     success: true,
@@ -105,7 +106,13 @@ exports.deleteCategory = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Please provide a valid category Id', 400));
   }
 
+  const categoryRelatedProducts = await Product.find({ category: categoryId });
+
   await Category.findByIdAndRemove(categoryId);
+
+  for (const product of categoryRelatedProducts) {
+    await product.remove();
+  }
 
   return res.json({
     success: true,
