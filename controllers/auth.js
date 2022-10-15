@@ -8,7 +8,17 @@ const sendEmail = require('../utils/sendMail');
 // @route   POST /api/v1/register
 // @access  Public
 exports.register = asyncHandler(async (req, res, next) => {
-  const { name, email, password } = req.body;
+  const {
+    name,
+    email,
+    password,
+    phone,
+    street,
+    apartment,
+    zip,
+    city,
+    country,
+  } = req.body;
 
   // Validate email and password
   if (!name || !email || !password) {
@@ -22,6 +32,12 @@ exports.register = asyncHandler(async (req, res, next) => {
     name: name.toLowerCase(),
     email: email.toLowerCase(),
     password,
+    phone,
+    street,
+    apartment,
+    zip,
+    city,
+    country,
   });
 
   sendTokenResponse(user, 200, res);

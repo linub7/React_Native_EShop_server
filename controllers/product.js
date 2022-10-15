@@ -83,6 +83,57 @@ exports.getProducts = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get products count
+// @route   GET /api/v1/products-count
+// @access  Private
+exports.getProductsCount = asyncHandler(async (req, res, next) => {
+  const productsCount = await Product.countDocuments();
+
+  return res.json({
+    success: true,
+    data: productsCount,
+  });
+});
+
+// @desc    Get featured products
+// @route   GET /api/v1/products-featured?count
+// @access  Private
+exports.getProductsFeatured = asyncHandler(async (req, res, next) => {
+  let {
+    query: { count },
+  } = req;
+
+  count = count ? parseInt(count) : 5;
+  const featuredProducts = await Product.find({ isFeatured: true })
+    .populate('category', 'name')
+    .limit(count);
+
+  return res.json({
+    success: true,
+    data: featuredProducts,
+  });
+});
+
+// @desc    Get specific category products
+// @route   GET /api/v1/products-category?categories
+// @access  Private
+exports.getSpecificCategoriesProducts = asyncHandler(async (req, res, next) => {
+  const {
+    query: { categories },
+  } = req;
+  let filter = {};
+  filter = { category: categories.split(',') };
+
+  const products = await Product.find(filter)
+    .populate('category', 'name')
+    .sort('-createdAt');
+
+  return res.json({
+    success: true,
+    data: products,
+  });
+});
+
 // @desc    Get Single Product
 // @route   GET /api/v1/products/:productId
 // @access  Private
