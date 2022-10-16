@@ -4,6 +4,10 @@ const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/async');
 const { isValidObjectId } = require('mongoose');
+const {
+  uploadImageToCloudinary,
+  destroyImageFromCloudinary,
+} = require('../utils/imageUpload');
 
 // @desc    Add Product
 // @route   POST /api/v1/add-product
@@ -14,7 +18,6 @@ exports.addProduct = asyncHandler(async (req, res, next) => {
       name,
       description,
       richDescription,
-      image,
       brand,
       price,
       category,
@@ -48,17 +51,23 @@ exports.addProduct = asyncHandler(async (req, res, next) => {
     );
   }
 
+  if (!req.file) {
+    return next(new ErrorResponse('Image field is required'));
+  }
+
   const newProduct = new Product({
     name,
     description,
     richDescription,
-    image,
     brand,
     price,
     category,
     countInStock,
     isFeatured,
   });
+
+  const { url, public_id } = await uploadImageToCloudinary(req.file?.path);
+  newProduct.image = { url, public_id };
 
   await newProduct.save();
 
@@ -218,6 +227,41 @@ exports.updateProduct = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Update Product
+// @route   PUT /api/v1/update-product-gallery-images/:productId
+// @access  Private
+exports.updateProductImages = asyncHandler(async (req, res, next) => {
+  const {
+    files,
+    params: { productId },
+  } = req;
+
+  if (!isValidObjectId(productId)) {
+    return next(new ErrorResponse('Please provide a valid product', 400));
+  }
+
+  let imagesPath = [];
+  if (files) {
+    files.map(async (file) => {
+      const { url, public_id } = await uploadImageToCloudinary(file?.path);
+      imagesPath.push({ url, public_id });
+    });
+  }
+
+  const updatedProduct = await Product.findByIdAndUpdate(
+    productId,
+    {
+      images: imagesPath,
+    },
+    { new: true, runValidators: true }
+  );
+
+  return res.json({
+    success: true,
+    data: updatedProduct,
+  });
+});
+
 // @desc    Delete Product
 // @route   PUT /api/v1/delete-product/:productId
 // @access  Private
@@ -230,7 +274,15 @@ exports.deleteProduct = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Please provide a valid product id', 400));
   }
 
-  await Product.findByIdAndRemove(productId);
+  const product = await Product.findById(productId);
+
+  if (product.image?.url) {
+    const result = await destroyImageFromCloudinary(product.image?.public_id);
+    if (result !== 'ok')
+      return next(new ErrorResponse('Error deleting image', 500));
+  }
+
+  await product.remove();
 
   return res.json({
     success: true,

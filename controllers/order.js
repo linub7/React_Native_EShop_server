@@ -20,7 +20,6 @@ exports.addOrder = asyncHandler(async (req, res, next) => {
       country,
       phone,
       status,
-      totalPrice,
     },
     user: loggedUser,
   } = req;
@@ -55,6 +54,20 @@ exports.addOrder = asyncHandler(async (req, res, next) => {
   const orderItemsIdsResolved = await orderItemsIds;
   console.log({ orderItemsIdsResolved });
 
+  // calculate totalPrice
+  const totalPrices = await Promise.all(
+    orderItemsIdsResolved.map(async (orderItemId) => {
+      const orderItem = await OrderItem.findById(orderItemId).populate(
+        'product',
+        'price'
+      );
+      const totalPrice = orderItem.product.price * orderItem.quantity;
+      return totalPrice;
+    })
+  );
+
+  const finalTotalPrice = totalPrices.reduce((a, b) => a + b, 0);
+
   // then: create new orders
   const newOrders = await Order.create({
     orderItems: orderItemsIdsResolved,
@@ -65,7 +78,7 @@ exports.addOrder = asyncHandler(async (req, res, next) => {
     country,
     phone,
     status,
-    totalPrice,
+    totalPrice: finalTotalPrice,
     user: loggedUser._id,
   });
 
@@ -109,6 +122,36 @@ exports.getAllOrdersForAdmin = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get Orders
+// @route   GET /api/v1/total-sales
+// @access  Private
+exports.getTotalSales = asyncHandler(async (req, res, next) => {
+  const totalSales = await Order.aggregate([
+    { $group: { _id: null, totalSales: { $sum: '$totalPrice' } } },
+  ]);
+
+  if (!totalSales) {
+    return next(new ErrorResponse('OOPS! an error occurred', 500));
+  }
+
+  return res.json({
+    success: true,
+    data: totalSales.pop().totalSales,
+  });
+});
+
+// @desc    Get All Orders count
+// @route   GET /api/v1/orders-count
+// @access  Private
+exports.getAllOrdersCount = asyncHandler(async (req, res, next) => {
+  const count = await Order.countDocuments();
+
+  return res.json({
+    success: true,
+    data: count,
+  });
+});
+
 // @desc    Get Single Order
 // @route   GET /api/v1/orders/:orderId
 // @access  Private
@@ -139,11 +182,63 @@ exports.getSingleOrder = asyncHandler(async (req, res, next) => {
 });
 
 // @desc    Update Order
-// @route   PUT /api/v1/update-order/:OrderId
+// @route   PUT /api/v1/update-order/:orderId
 // @access  Private
-exports.updateOrder = asyncHandler(async (req, res, next) => {});
+exports.updateOrder = asyncHandler(async (req, res, next) => {
+  const {
+    params: { orderId },
+    body: { status },
+    user: loggedInUser,
+  } = req;
+
+  if (!isValidObjectId(orderId)) {
+    return next(new ErrorResponse('Please provide a valid order', 400));
+  }
+
+  const updatedOrder = await Order.findOneAndUpdate(
+    {
+      _id: orderId,
+      user: loggedInUser._id,
+    },
+    {
+      status,
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
+
+  return res.json({
+    success: true,
+    data: updatedOrder,
+  });
+});
 
 // @desc    Delete Order
-// @route   PUT /api/v1/delete-order/:OrderId
+// @route   PUT /api/v1/delete-order/:orderId
 // @access  Private
-exports.deleteOrder = asyncHandler(async (req, res, next) => {});
+exports.deleteOrder = asyncHandler(async (req, res, next) => {
+  const {
+    params: { orderId },
+    user: loggedInUser,
+  } = req;
+
+  if (!isValidObjectId(orderId)) {
+    return next(new ErrorResponse('Please provide a valid order', 400));
+  }
+
+  const deletedOrder = await Order.findOneAndRemove({
+    _id: orderId,
+    user: loggedInUser._id,
+  });
+
+  deletedOrder.orderItems.map(async (orderItem) => {
+    await OrderItem.findByIdAndRemove(orderItem);
+  });
+
+  return res.json({
+    success: true,
+    message: 'Order deleted successfully',
+  });
+});
